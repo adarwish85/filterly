@@ -1,6 +1,6 @@
 <?php
 /**
- * WooCommerce product attribute filter.
+ * WooCommerce product attribute filter type implementation.
  *
  * @since      1.0.0
  * @package    Filterly
@@ -11,13 +11,15 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-// Make sure WooCommerce is active
+/**
+ * Check if WooCommerce is active before defining the class
+ */
 if ( ! class_exists( 'WooCommerce' ) ) {
     return;
 }
 
 /**
- * WooCommerce product attribute filter class.
+ * WooCommerce attribute filter class.
  */
 class Filterly_Attribute_Filter extends Filterly_Filter_Base {
 
@@ -26,7 +28,7 @@ class Filterly_Attribute_Filter extends Filterly_Filter_Base {
      *
      * @since    1.0.0
      * @access   protected
-     * @var      string    $attribute    The attribute name.
+     * @var      string    $attribute    The product attribute name.
      */
     protected $attribute;
 
@@ -34,21 +36,20 @@ class Filterly_Attribute_Filter extends Filterly_Filter_Base {
      * Initialize the attribute filter.
      *
      * @since    1.0.0
-     * @param    string    $attribute   The attribute name (slug).
-     * @param    string    $label       Optional. The filter display label.
-     * @param    array     $options     Optional. Additional filter options.
+     * @param    string    $attribute    The product attribute (taxonomy).
+     * @param    string    $label        The filter display label (optional).
+     * @param    array     $options      Additional filter options.
      */
     public function __construct( $attribute, $label = '', $options = array() ) {
-        $this->attribute = sanitize_key( $attribute );
+        $this->attribute = wc_sanitize_taxonomy_name( $attribute );
         $this->type = 'attribute';
         
-        // If no label is provided, use the attribute label
+        // Use the attribute label if no custom label is provided
         if ( empty( $label ) ) {
-            $taxonomy = wc_attribute_taxonomy_name( $attribute );
-            $attribute_obj = taxonomy_exists( $taxonomy ) ? get_taxonomy( $taxonomy ) : null;
-            $label = $attribute_obj ? $attribute_obj->labels->singular_name : wc_attribute_label( $attribute );
+            $attribute_obj = wc_get_attribute( wc_attribute_taxonomy_id_by_name( $attribute ) );
+            $label = $attribute_obj ? $attribute_obj->name : $attribute;
         }
-
+        
         parent::__construct( 'pa_' . $attribute, $label, $options );
     }
 
@@ -60,29 +61,32 @@ class Filterly_Attribute_Filter extends Filterly_Filter_Base {
      */
     protected function get_default_options() {
         return array(
-            'display_type'      => 'checkbox',  // checkbox, radio, select, multiselect
-            'show_count'        => true,        // Show product counts
-            'orderby'           => 'name',      // name, count
-            'order'             => 'ASC',       // ASC, DESC
-            'hide_empty'        => true,        // Hide terms with no products
-            'include'           => array(),     // Terms to include
-            'exclude'           => array(),     // Terms to exclude
+            'display_type'       => 'checkbox', // checkbox, radio, select, multiselect, color, image
+            'show_count'         => true,
+            'hide_empty'         => true,
+            'orderby'            => 'name',
+            'order'              => 'ASC',
+            'include'            => array(),
+            'exclude'            => array(),
+            'search_box'         => false,
         );
     }
 
     /**
-     * Get the available choices for this filter.
+     * Get the available term choices for this attribute.
      *
      * @since    1.0.0
      * @return   array    The available choices.
      */
     public function get_choices() {
-        $taxonomy = wc_attribute_taxonomy_name( str_replace( 'pa_', '', $this->attribute ) );
+        $taxonomy = 'pa_' . $this->attribute;
         
+        // Check if the attribute taxonomy exists
         if ( ! taxonomy_exists( $taxonomy ) ) {
             return array();
         }
         
+        // Set up args for get_terms()
         $args = array(
             'taxonomy'   => $taxonomy,
             'hide_empty' => $this->options['hide_empty'],
@@ -90,39 +94,46 @@ class Filterly_Attribute_Filter extends Filterly_Filter_Base {
             'order'      => $this->options['order'],
         );
 
-        // Include specific terms if set
         if ( ! empty( $this->options['include'] ) ) {
-            $args['include'] = array_map( 'absint', (array) $this->options['include'] );
+            $args['include'] = $this->options['include'];
         }
 
-        // Exclude specific terms if set
         if ( ! empty( $this->options['exclude'] ) ) {
-            $args['exclude'] = array_map( 'absint', (array) $this->options['exclude'] );
+            $args['exclude'] = $this->options['exclude'];
         }
 
+        // Get the terms
         $terms = get_terms( $args );
-
+        
         if ( is_wp_error( $terms ) ) {
             return array();
         }
-
+        
+        // Format the terms for choices
         $choices = array();
-
+        
         foreach ( $terms as $term ) {
-            $count_html = '';
-            if ( $this->options['show_count'] ) {
-                $count_html = ' <span class="filterly-count">(' . absint( $term->count ) . ')</span>';
+            $choice = array(
+                'id'    => $term->term_id,
+                'slug'  => $term->slug,
+                'name'  => $term->name,
+                'count' => $term->count,
+            );
+            
+            // Add color/image data if needed
+            if ( in_array( $this->options['display_type'], array( 'color', 'image' ) ) ) {
+                $term_meta = get_term_meta( $term->term_id );
+                
+                if ( $this->options['display_type'] === 'color' ) {
+                    $choice['color'] = isset( $term_meta['product_attribute_color'] ) ? $term_meta['product_attribute_color'][0] : '';
+                } else {
+                    $choice['image'] = isset( $term_meta['product_attribute_image'] ) ? wp_get_attachment_image_url( $term_meta['product_attribute_image'][0], 'thumbnail' ) : '';
+                }
             }
             
-            $choices[ $term->term_id ] = array(
-                'label'    => $term->name . $count_html,
-                'value'    => $term->term_id,
-                'slug'     => $term->slug,
-                'count'    => $term->count,
-                'taxonomy' => $taxonomy,
-            );
+            $choices[$term->term_id] = $choice;
         }
-
+        
         return $choices;
     }
 
@@ -139,33 +150,103 @@ class Filterly_Attribute_Filter extends Filterly_Filter_Base {
             return $query;
         }
 
-        $taxonomy = wc_attribute_taxonomy_name( str_replace( 'pa_', '', $this->attribute ) );
+        $taxonomy = 'pa_' . $this->attribute;
         
-        if ( ! taxonomy_exists( $taxonomy ) ) {
-            return $query;
-        }
-
-        // Convert string values to integers for term IDs
-        $term_ids = array_map( 'absint', (array) $filter_values );
-
-        // Get existing tax queries
+        // Get existing tax queries if any
         $tax_query = $query->get( 'tax_query', array() );
+        
+        // Prepare the values - could be term IDs or slugs
+        $values = array();
+        foreach ( $filter_values as $value ) {
+            if ( is_numeric( $value ) ) {
+                $values[] = absint( $value );
+            } else {
+                $values[] = sanitize_title( $value );
+            }
+        }
+        
+        // Determine the field to use (term_id or slug)
+        $field = is_numeric( reset( $values ) ) ? 'term_id' : 'slug';
         
         // Add our taxonomy query
         $tax_query[] = array(
-            'taxonomy' => $taxonomy,
-            'field'    => 'id',
-            'terms'    => $term_ids,
-            'operator' => 'IN',
+            'taxonomy'         => $taxonomy,
+            'field'            => $field,
+            'terms'            => $values,
+            'operator'         => 'IN',
         );
 
-        // Make sure the relation is set
-        if ( count( $tax_query ) > 1 && ! isset( $tax_query['relation'] ) ) {
-            $tax_query['relation'] = 'AND';
-        }
-
+        // Set the tax_query back to the WP_Query
         $query->set( 'tax_query', $tax_query );
-
+        
         return $query;
+    }
+    
+    /**
+     * Render color swatches for color-type attribute display.
+     *
+     * @since    1.0.0
+     * @param    array    $choices         The attribute choices.
+     * @param    array    $selected_values The currently selected values.
+     * @return   string   The color swatches HTML.
+     */
+    public function render_color_swatches( $choices, $selected_values = array() ) {
+        $html = '<div class="filterly-color-swatches">';
+        
+        foreach ( $choices as $choice ) {
+            $is_selected = in_array( $choice['slug'], $selected_values );
+            $html .= sprintf(
+                '<label class="filterly-color-swatch %1$s">
+                    <input type="%2$s" name="filterly[%3$s][]" value="%4$s" %5$s>
+                    <span class="swatch-color" style="background-color:%6$s" title="%7$s"></span>
+                    %8$s
+                </label>',
+                $is_selected ? 'selected' : '',
+                $this->options['display_type'] === 'radio' ? 'radio' : 'checkbox',
+                esc_attr( $this->id ),
+                esc_attr( $choice['slug'] ),
+                checked( $is_selected, true, false ),
+                esc_attr( $choice['color'] ),
+                esc_attr( $choice['name'] ),
+                $this->options['show_count'] ? '<span class="count">(' . esc_html( $choice['count'] ) . ')</span>' : ''
+            );
+        }
+        
+        $html .= '</div>';
+        return $html;
+    }
+    
+    /**
+     * Render image swatches for image-type attribute display.
+     *
+     * @since    1.0.0
+     * @param    array    $choices         The attribute choices.
+     * @param    array    $selected_values The currently selected values.
+     * @return   string   The image swatches HTML.
+     */
+    public function render_image_swatches( $choices, $selected_values = array() ) {
+        $html = '<div class="filterly-image-swatches">';
+        
+        foreach ( $choices as $choice ) {
+            $is_selected = in_array( $choice['slug'], $selected_values );
+            $html .= sprintf(
+                '<label class="filterly-image-swatch %1$s">
+                    <input type="%2$s" name="filterly[%3$s][]" value="%4$s" %5$s>
+                    <img src="%6$s" alt="%7$s" title="%7$s">
+                    %8$s
+                </label>',
+                $is_selected ? 'selected' : '',
+                $this->options['display_type'] === 'radio' ? 'radio' : 'checkbox',
+                esc_attr( $this->id ),
+                esc_attr( $choice['slug'] ),
+                checked( $is_selected, true, false ),
+                esc_url( $choice['image'] ),
+                esc_attr( $choice['name'] ),
+                $this->options['show_count'] ? '<span class="count">(' . esc_html( $choice['count'] ) . ')</span>' : ''
+            );
+        }
+        
+        $html .= '</div>';
+        return $html;
     }
 }

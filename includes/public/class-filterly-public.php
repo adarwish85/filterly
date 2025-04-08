@@ -35,22 +35,13 @@ class Filterly_Public {
     private $version;
 
     /**
-     * The query handler instance.
+     * The active filters collection.
      *
      * @since    1.0.0
      * @access   private
-     * @var      Filterly_Query    $query    The query handler instance.
+     * @var      array    $filters    The active filter objects.
      */
-    private $query;
-
-    /**
-     * The URL handler instance.
-     *
-     * @since    1.0.0
-     * @access   private
-     * @var      Filterly_URL_Handler    $url_handler    The URL handler instance.
-     */
-    private $url_handler;
+    private $filters = array();
 
     /**
      * Initialize the class and set its properties.
@@ -63,13 +54,8 @@ class Filterly_Public {
         $this->plugin_name = $plugin_name;
         $this->version = $version;
         
-        // Load dependencies
-        require_once FILTERLY_PLUGIN_DIR . 'includes/public/class-filterly-query.php';
-        require_once FILTERLY_PLUGIN_DIR . 'includes/public/class-filterly-url-handler.php';
-        
-        // Initialize handlers
-        $this->query = new Filterly_Query();
-        $this->url_handler = new Filterly_URL_Handler();
+        // Initialize the default filters
+        $this->initialize_filters();
     }
 
     /**
@@ -78,7 +64,13 @@ class Filterly_Public {
      * @since    1.0.0
      */
     public function enqueue_styles() {
-        wp_enqueue_style( $this->plugin_name, FILTERLY_PLUGIN_URL . 'assets/css/public.css', array(), $this->version, 'all' );
+        wp_enqueue_style(
+            $this->plugin_name,
+            FILTERLY_PLUGIN_URL . 'assets/css/public.css',
+            array(),
+            $this->version,
+            'all'
+        );
     }
 
     /**
@@ -87,301 +79,490 @@ class Filterly_Public {
      * @since    1.0.0
      */
     public function enqueue_scripts() {
-        wp_enqueue_script( $this->plugin_name, FILTERLY_PLUGIN_URL . 'assets/js/public.js', array( 'jquery' ), $this->version, true );
+        wp_enqueue_script(
+            $this->plugin_name,
+            FILTERLY_PLUGIN_URL . 'assets/js/public.js',
+            array( 'jquery', 'jquery-ui-slider' ),
+            $this->version,
+            true
+        );
         
-        // Add localized data for the script
-        wp_localize_script( $this->plugin_name, 'filterly', array(
-            'ajax_url'        => admin_url( 'admin-ajax.php' ),
-            'nonce'           => wp_create_nonce( 'filterly_nonce' ),
-            'loading_text'    => __( 'Loading...', 'filterly' ),
-            'view_more_text'  => __( 'View More', 'filterly' ),
-            'view_less_text'  => __( 'View Less', 'filterly' ),
-        ) );
+        // Localize the script with data needed for AJAX
+        wp_localize_script(
+            $this->plugin_name,
+            'filterly_params',
+            array(
+                'ajax_url' => admin_url( 'admin-ajax.php' ),
+                'nonce'    => wp_create_nonce( 'filterly_filter' ),
+            )
+        );
     }
 
     /**
-     * Process AJAX filter requests.
+     * Initialize the filters collection.
      *
      * @since    1.0.0
      */
-    public function process_ajax_filter() {
-        // Check nonce
-        if ( ! check_ajax_referer( 'filterly_nonce', 'nonce', false ) ) {
-            wp_send_json_error( array( 'message' => __( 'Security check failed.', 'filterly' ) ) );
-        }
-
-        // Get filter data
-        $filter_data = isset( $_POST['filter_data'] ) ? $_POST['filter_data'] : array();
+    private function initialize_filters() {
+        // Get filter settings from options
+        $filter_settings = get_option( 'filterly_filters', array() );
         
-        if ( ! is_array( $filter_data ) ) {
-            $filter_data = array();
-        }
-        
-        // Sanitize filter data
-        $sanitized_filter_data = array();
-        foreach ( $filter_data as $key => $values ) {
-            $key = sanitize_key( $key );
-            if ( is_array( $values ) ) {
-                $sanitized_values = array_map( 'sanitize_text_field', $values );
-                $sanitized_filter_data[ $key ] = $sanitized_values;
-            } else {
-                $sanitized_filter_data[ $key ] = sanitize_text_field( $values );
-            }
-        }
-        
-        // Get target settings
-        $target_post_type = isset( $_POST['post_type'] ) ? sanitize_key( $_POST['post_type'] ) : 'post';
-        $posts_per_page = isset( $_POST['posts_per_page'] ) ? absint( $_POST['posts_per_page'] ) : get_option( 'posts_per_page' );
-        $paged = isset( $_POST['paged'] ) ? absint( $_POST['paged'] ) : 1;
-        $target_container = isset( $_POST['container'] ) ? sanitize_text_field( $_POST['container'] ) : '';
-        
-        // Build the query
-        $query_args = $this->query->build_query( $sanitized_filter_data, array(
-            'post_type'      => $target_post_type,
-            'posts_per_page' => $posts_per_page,
-            'paged'          => $paged,
-        ) );
-        
-        // Execute the query
-        $query = new WP_Query( $query_args );
-        
-        // Get the results HTML
-        ob_start();
-        
-        if ( $query->have_posts() ) {
-            while ( $query->have_posts() ) {
-                $query->the_post();
-                
-                // Use template based on post type
-                $template = 'content-' . $target_post_type . '.php';
-                
-                // Check if the template exists in the theme
-                if ( locate_template( $template ) ) {
-                    get_template_part( 'content', $target_post_type );
-                } else {
-                    // Fall back to default template
-                    include FILTERLY_PLUGIN_DIR . 'templates/results-container.php';
-                }
-            }
-            
-            // Pagination
-            $this->render_pagination( $query );
-            
-        } else {
-            echo '<div class="filterly-no-results">';
-            echo esc_html__( 'No results found.', 'filterly' );
-            echo '</div>';
-        }
-        
-        $results_html = ob_get_clean();
-        wp_reset_postdata();
-        
-        // Generate filter state URL
-        $filter_url = $this->url_handler->generate_filter_url( $sanitized_filter_data );
-        
-        // Return the response
-        wp_send_json_success( array(
-            'html'        => $results_html,
-            'filter_url'  => $filter_url,
-            'found_posts' => $query->found_posts,
-            'max_pages'   => $query->max_num_pages,
-        ) );
-    }
-
-    /**
-     * Render pagination HTML.
-     *
-     * @since    1.0.0
-     * @param    WP_Query    $query    The query object.
-     */
-    private function render_pagination( $query ) {
-        if ( $query->max_num_pages <= 1 ) {
+        if ( empty( $filter_settings ) ) {
+            // If no settings, create some default filters for demonstration
+            $this->create_default_filters();
             return;
         }
         
-        echo '<nav class="filterly-pagination">';
-        
-        $big = 999999999;
-        echo paginate_links( array(
-            'base'      => str_replace( $big, '%#%', esc_url( get_pagenum_link( $big ) ) ),
-            'format'    => '?paged=%#%',
-            'current'   => max( 1, $query->get( 'paged' ) ),
-            'total'     => $query->max_num_pages,
-            'prev_text' => '&laquo;',
-            'next_text' => '&raquo;',
-        ) );
-        
-        echo '</nav>';
+        // Create filter objects based on settings
+        foreach ( $filter_settings as $filter_data ) {
+            $filter = $this->create_filter_from_data( $filter_data );
+            
+            if ( $filter ) {
+                $this->filters[$filter->get_id()] = $filter;
+            }
+        }
     }
 
     /**
-     * Shortcode handler for [filterly].
+     * Create default filters for demonstration.
      *
      * @since    1.0.0
-     * @param    array     $atts        Shortcode attributes.
-     * @param    string    $content     Shortcode content.
-     * @return   string    The shortcode output.
      */
-    public function shortcode_handler( $atts, $content = null ) {
-        $atts = shortcode_atts( array(
-            'post_type'       => 'post',
-            'filters'         => '',  // comma-separated list of filters to include
-            'filters_exclude' => '',  // comma-separated list of filters to exclude
-            'posts_per_page'  => get_option( 'posts_per_page' ),
-            'show_count'      => 'true',
-            'show_reset'      => 'true',
-            'ajax_enabled'    => 'true',
-            'pretty_urls'     => 'true',
-            'auto_submit'     => 'true',
-            'layout'          => 'standard', // standard, horizontal, sidebar
-            'template'        => '',
-        ), $atts, 'filterly' );
-        
-        // Generate a unique ID for this filter instance
-        $filter_id = 'filterly-' . wp_rand( 1000, 9999 );
-        
-        // Initialize filters
-        $filters = $this->get_filters_for_post_type( $atts['post_type'], $atts['filters'], $atts['filters_exclude'] );
-        
-        if ( empty( $filters ) ) {
-            return '<div class="filterly-error">' . esc_html__( 'No filters available for this post type.', 'filterly' ) . '</div>';
+    private function create_default_filters() {
+        // Add default category filter
+        if ( taxonomy_exists( 'category' ) ) {
+            $this->filters['category'] = new Filterly_Taxonomy_Filter( 'category', __( 'Categories', 'filterly' ) );
         }
         
-        // Get current filter values from URL
-        $current_filter_values = $this->url_handler->get_current_filter_values();
+        // Add default tag filter
+        if ( taxonomy_exists( 'post_tag' ) ) {
+            $this->filters['post_tag'] = new Filterly_Taxonomy_Filter( 'post_tag', __( 'Tags', 'filterly' ) );
+        }
         
-        // Start output buffer
-        ob_start();
+        // Add WooCommerce product category filter
+        if ( taxonomy_exists( 'product_cat' ) ) {
+            $this->filters['product_cat'] = new Filterly_Taxonomy_Filter(
+                'product_cat',
+                __( 'Product Categories', 'filterly' ),
+                array( 'hierarchical' => true )
+            );
+        }
         
-        // Filter form
-        echo '<div id="' . esc_attr( $filter_id ) . '" class="filterly-container filterly-layout-' . esc_attr( $atts['layout'] ) . '">';
-        
-        // Filter form
-        include FILTERLY_PLUGIN_DIR . 'templates/filter-form.php';
-        
-        // Results container
-        echo '<div class="filterly-results-container">';
-        
-        // Run the initial query
-        $query_args = $this->query->build_query( $current_filter_values, array(
-            'post_type'      => $atts['post_type'],
-            'posts_per_page' => absint( $atts['posts_per_page'] ),
-        ) );
-        
-        $query = new WP_Query( $query_args );
-        
-        if ( $query->have_posts() ) {
-            while ( $query->have_posts() ) {
-                $query->the_post();
-                
-                // Use custom template if provided
-                if ( ! empty( $atts['template'] ) && locate_template( $atts['template'] ) ) {
-                    get_template_part( str_replace( '.php', '', $atts['template'] ) );
-                } 
-                // Use template based on post type
-                elseif ( locate_template( 'content-' . $atts['post_type'] . '.php' ) ) {
-                    get_template_part( 'content', $atts['post_type'] );
-                } 
-                // Fall back to default template
-                else {
-                    include FILTERLY_PLUGIN_DIR . 'templates/results-container.php';
+        // Add WooCommerce product attribute filters
+        if ( function_exists( 'wc_get_attribute_taxonomies' ) ) {
+            $attribute_taxonomies = wc_get_attribute_taxonomies();
+            
+            if ( ! empty( $attribute_taxonomies ) ) {
+                foreach ( $attribute_taxonomies as $taxonomy ) {
+                    $this->filters['pa_' . $taxonomy->attribute_name] = new Filterly_Attribute_Filter(
+                        $taxonomy->attribute_name,
+                        $taxonomy->attribute_label
+                    );
                 }
             }
-            
-            // Pagination
-            $this->render_pagination( $query );
-            
-        } else {
-            echo '<div class="filterly-no-results">';
-            echo esc_html__( 'No results found.', 'filterly' );
-            echo '</div>';
+        }
+    }
+
+    /**
+     * Create a filter object from filter data.
+     *
+     * @since    1.0.0
+     * @param    array    $filter_data    The filter configuration data.
+     * @return   Filterly_Filter_Base|null    The created filter object or null.
+     */
+    private function create_filter_from_data( $filter_data ) {
+        if ( empty( $filter_data['type'] ) ) {
+            return null;
         }
         
-        wp_reset_postdata();
-        
-        echo '</div>'; // .filterly-results-container
-        echo '</div>'; // .filterly-container
-        
-        // Initialize the filter with JavaScript
-        ?>
-        <script type="text/javascript">
-            jQuery(document).ready(function($) {
-                if (typeof $.filterly === 'function') {
-                    $('#<?php echo esc_js( $filter_id ); ?>').filterly({
-                        ajaxEnabled: <?php echo $atts['ajax_enabled'] === 'true' ? 'true' : 'false'; ?>,
-                        prettyUrls: <?php echo $atts['pretty_urls'] === 'true' ? 'true' : 'false'; ?>,
-                        autoSubmit: <?php echo $atts['auto_submit'] === 'true' ? 'true' : 'false'; ?>,
-                        postType: '<?php echo esc_js( $atts['post_type'] ); ?>',
-                        postsPerPage: <?php echo esc_js( absint( $atts['posts_per_page'] ) ); ?>,
-                        container: '.filterly-results-container'
-                    });
+        switch ( $filter_data['type'] ) {
+            case 'taxonomy':
+                return new Filterly_Taxonomy_Filter(
+                    $filter_data['taxonomy'],
+                    $filter_data['label'],
+                    isset( $filter_data['options'] ) ? $filter_data['options'] : array()
+                );
+                
+            case 'meta':
+                return new Filterly_Meta_Filter(
+                    $filter_data['meta_key'],
+                    $filter_data['label'],
+                    isset( $filter_data['options'] ) ? $filter_data['options'] : array()
+                );
+                
+            case 'attribute':
+                if ( class_exists( 'WooCommerce' ) ) {
+                    return new Filterly_Attribute_Filter(
+                        $filter_data['attribute'],
+                        $filter_data['label'],
+                        isset( $filter_data['options'] ) ? $filter_data['options'] : array()
+                    );
                 }
-            });
-        </script>
-        <?php
+                break;
+                
+            case 'variation':
+                if ( class_exists( 'WooCommerce' ) && class_exists( 'Filterly_Variation_Filter' ) ) {
+                    return new Filterly_Variation_Filter(
+                        $filter_data['variation_key'],
+                        $filter_data['label'],
+                        isset( $filter_data['options'] ) ? $filter_data['options'] : array()
+                    );
+                }
+                break;
+        }
+        
+        return null;
+    }
+
+    /**
+     * Handle the filterly shortcode.
+     *
+     * @since    1.0.0
+     * @param    array     $atts    Shortcode attributes.
+     * @return   string    Rendered shortcode HTML.
+     */
+    public function shortcode_handler( $atts ) {
+        $attributes = shortcode_atts(
+            array(
+                'post_type'    => 'post',
+                'filters'      => '',
+                'target'       => '',
+                'per_page'     => get_option( 'posts_per_page' ),
+                'columns'      => 3,
+                'show_count'   => 'yes',
+                'ajax'         => 'yes',
+                'reset_button' => 'yes',
+            ),
+            $atts
+        );
+        
+        // Get the selected filters
+        $filter_ids = array();
+        if ( ! empty( $attributes['filters'] ) ) {
+            $filter_ids = array_map( 'trim', explode( ',', $attributes['filters'] ) );
+        }
+        
+        // If no specific filters selected, use all available filters
+        if ( empty( $filter_ids ) ) {
+            $filter_ids = array_keys( $this->filters );
+        }
+        
+        // Get the currently selected filter values from URL parameters
+        $selected_values = $this->get_selected_filter_values();
+        
+        // Start output buffering
+        ob_start();
+        
+        // Render the filter form
+        $this->render_filter_form( $filter_ids, $selected_values, $attributes );
+        
+        // If a target is specified, we don't display results here
+        if ( empty( $attributes['target'] ) ) {
+            $this->render_filtered_results( $attributes, $selected_values );
+        }
         
         return ob_get_clean();
     }
 
     /**
-     * Get the available filters for a post type.
+     * Render the filter form.
      *
      * @since    1.0.0
-     * @param    string    $post_type         The post type.
-     * @param    string    $include_filters   Comma-separated list of filters to include.
-     * @param    string    $exclude_filters   Comma-separated list of filters to exclude.
-     * @return   array     The available filters.
+     * @param    array     $filter_ids       IDs of filters to display.
+     * @param    array     $selected_values  Currently selected filter values.
+     * @param    array     $attributes       Shortcode attributes.
      */
-    private function get_filters_for_post_type( $post_type, $include_filters = '', $exclude_filters = '' ) {
-        $filters = array();
+    private function render_filter_form( $filter_ids, $selected_values, $attributes ) {
+        $target_id = ! empty( $attributes['target'] ) ? $attributes['target'] : 'filterly-results-' . uniqid();
+        $ajax = ( $attributes['ajax'] === 'yes' );
         
-        // Get taxonomies for this post type
-        $taxonomies = get_object_taxonomies( $post_type, 'objects' );
+        // Add form attributes
+        $form_atts = array(
+            'class'            => 'filterly-filter-form',
+            'data-target'      => $target_id,
+            'data-post-type'   => $attributes['post_type'],
+            'data-per-page'    => $attributes['per_page'],
+            'data-columns'     => $attributes['columns'],
+            'data-ajax'        => $ajax ? 'true' : 'false',
+        );
         
-        if ( ! empty( $taxonomies ) ) {
-            foreach ( $taxonomies as $taxonomy ) {
-                // Skip internal taxonomies
-                if ( ! $taxonomy->public ) {
-                    continue;
+        include FILTERLY_PLUGIN_DIR . 'templates/filter-form.php';
+    }
+
+    /**
+     * Render the filtered results.
+     *
+     * @since    1.0.0
+     * @param    array     $attributes       Shortcode attributes.
+     * @param    array     $selected_values  Currently selected filter values.
+     */
+    private function render_filtered_results( $attributes, $selected_values ) {
+        $target_id = 'filterly-results-' . uniqid();
+        
+        echo '<div id="' . esc_attr( $target_id ) . '" class="filterly-results" data-post-type="' . esc_attr( $attributes['post_type'] ) . '">';
+        
+        // Create a WP_Query with the filter values
+        $query_args = array(
+            'post_type'      => $attributes['post_type'],
+            'posts_per_page' => $attributes['per_page'],
+            'post_status'    => 'publish',
+        );
+        
+        // Apply filters to the query
+        $query = $this->apply_filters_to_query( new WP_Query(), $selected_values, $query_args );
+        
+        // Execute the query
+        $query->query( $query_args );
+        
+        // Display results based on post type
+        if ( $attributes['post_type'] === 'product' && function_exists( 'woocommerce_product_loop_start' ) ) {
+            // WooCommerce product display
+            woocommerce_product_loop_start();
+            
+            if ( $query->have_posts() ) {
+                while ( $query->have_posts() ) {
+                    $query->the_post();
+                    wc_get_template_part( 'content', 'product' );
+                }
+            } else {
+                echo '<p class="woocommerce-info">' . esc_html__( 'No products found', 'filterly' ) . '</p>';
+            }
+            
+            woocommerce_product_loop_end();
+            
+            // Pagination
+            woocommerce_pagination();
+            
+        } else {
+            // Standard WordPress post display
+            if ( $query->have_posts() ) {
+                echo '<div class="filterly-posts columns-' . esc_attr( $attributes['columns'] ) . '">';
+                
+                while ( $query->have_posts() ) {
+                    $query->the_post();
+                    include FILTERLY_PLUGIN_DIR . 'templates/content-post.php';
                 }
                 
-                $filters[ $taxonomy->name ] = new Filterly_Taxonomy_Filter( $taxonomy->name );
+                echo '</div>';
+                
+                // Pagination
+                $this->render_pagination( $query );
+                
+            } else {
+                echo '<p>' . esc_html__( 'No posts found', 'filterly' ) . '</p>';
             }
         }
         
-        // For WooCommerce products, add special filters
-        if ( $post_type === 'product' && class_exists( 'WooCommerce' ) ) {
-            // Add price filter
-            $filters['price'] = new Filterly_Meta_Filter( '_price', __( 'Price', 'filterly' ), array(
-                'display_type' => 'range',
-                'data_type'    => 'numeric',
-            ) );
+        wp_reset_postdata();
+        
+        echo '</div>'; // .filterly-results
+    }
+
+    /**
+     * Handle AJAX filter requests.
+     *
+     * @since    1.0.0
+     */
+    public function process_ajax_filter() {
+        // Check nonce
+        if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'filterly_filter' ) ) {
+            wp_send_json_error( array( 'message' => __( 'Security check failed', 'filterly' ) ) );
+            exit;
+        }
+        
+        // Get filter values from POST data
+        $filter_values = isset( $_POST['filters'] ) ? $this->sanitize_filter_values( $_POST['filters'] ) : array();
+        
+        // Get query parameters
+        $post_type = isset( $_POST['post_type'] ) ? sanitize_text_field( $_POST['post_type'] ) : 'post';
+        $per_page = isset( $_POST['per_page'] ) ? absint( $_POST['per_page'] ) : get_option( 'posts_per_page' );
+        $paged = isset( $_POST['paged'] ) ? absint( $_POST['paged'] ) : 1;
+        $columns = isset( $_POST['columns'] ) ? absint( $_POST['columns'] ) : 3;
+        
+        // Create query args
+        $query_args = array(
+            'post_type'      => $post_type,
+            'posts_per_page' => $per_page,
+            'paged'          => $paged,
+            'post_status'    => 'publish',
+        );
+        
+        // Apply filters to query
+        $query = $this->apply_filters_to_query( new WP_Query(), $filter_values, $query_args );
+        
+        // Execute query
+        $query->query( $query_args );
+        
+        // Start output buffering to capture the HTML
+        ob_start();
+        
+        // Display results based on post type
+        if ( $post_type === 'product' && function_exists( 'woocommerce_product_loop_start' ) ) {
+            // WooCommerce product display
+            woocommerce_product_loop_start();
             
-            // Add product attributes
-            $attributes = wc_get_attribute_taxonomies();
-            
-            if ( ! empty( $attributes ) ) {
-                foreach ( $attributes as $attribute ) {
-                    $filters[ 'pa_' . $attribute->attribute_name ] = new Filterly_Attribute_Filter( $attribute->attribute_name );
+            if ( $query->have_posts() ) {
+                while ( $query->have_posts() ) {
+                    $query->the_post();
+                    wc_get_template_part( 'content', 'product' );
                 }
+            } else {
+                echo '<p class="woocommerce-info">' . esc_html__( 'No products found', 'filterly' ) . '</p>';
+            }
+            
+            woocommerce_product_loop_end();
+            
+            // Pagination
+            woocommerce_pagination();
+            
+        } else {
+            // Standard WordPress post display
+            if ( $query->have_posts() ) {
+                echo '<div class="filterly-posts columns-' . esc_attr( $columns ) . '">';
+                
+                while ( $query->have_posts() ) {
+                    $query->the_post();
+                    include FILTERLY_PLUGIN_DIR . 'templates/content-post.php';
+                }
+                
+                echo '</div>';
+                
+                // Pagination
+                $this->render_pagination( $query );
+                
+            } else {
+                echo '<p>' . esc_html__( 'No posts found', 'filterly' ) . '</p>';
             }
         }
         
-        // Allow custom filters to be added by other plugins
-        $filters = apply_filters( 'filterly_filters_for_post_type', $filters, $post_type );
+        wp_reset_postdata();
         
-        // Include only specific filters if requested
-        if ( ! empty( $include_filters ) ) {
-            $include_list = array_map( 'trim', explode( ',', $include_filters ) );
-            $filters = array_intersect_key( $filters, array_flip( $include_list ) );
+        // Get the buffered content
+        $content = ob_get_clean();
+        
+        // Send the response
+        wp_send_json_success( array(
+            'content' => $content,
+            'found_posts' => $query->found_posts,
+            'max_num_pages' => $query->max_num_pages,
+            'current_page' => $paged,
+        ) );
+        
+        exit;
+    }
+
+    /**
+     * Get selected filter values from URL parameters.
+     *
+     * @since    1.0.0
+     * @return   array    Array of filter values keyed by filter ID.
+     */
+    private function get_selected_filter_values() {
+        $values = array();
+        
+        // Get filter values from query string
+        foreach ( $_GET as $key => $value ) {
+            // If the filter exists in our collection
+            if ( isset( $this->filters[$key] ) ) {
+                // Ensure the value is an array
+                if ( ! is_array( $value ) ) {
+                    $value = array( $value );
+                }
+                
+                // Sanitize the values
+                $clean_values = array();
+                foreach ( $value as $val ) {
+                    $clean_values[] = sanitize_text_field( $val );
+                }
+                
+                $values[$key] = $clean_values;
+            }
         }
         
-        // Exclude specific filters if requested
-        if ( ! empty( $exclude_filters ) ) {
-            $exclude_list = array_map( 'trim', explode( ',', $exclude_filters ) );
-            $filters = array_diff_key( $filters, array_flip( $exclude_list ) );
+        return $values;
+    }
+
+    /**
+     * Sanitize filter values from POST data.
+     *
+     * @since    1.0.0
+     * @param    array    $dirty_values    The unsanitized filter values.
+     * @return   array    Sanitized filter values.
+     */
+    private function sanitize_filter_values( $dirty_values ) {
+        $clean_values = array();
+        
+        if ( ! is_array( $dirty_values ) ) {
+            return $clean_values;
         }
         
-        return $filters;
+        foreach ( $dirty_values as $filter_id => $values ) {
+            $filter_id = sanitize_key( $filter_id );
+            
+            if ( ! isset( $this->filters[$filter_id] ) ) {
+                continue;
+            }
+            
+            // Ensure values is an array
+            if ( ! is_array( $values ) ) {
+                $values = array( $values );
+            }
+            
+            // Sanitize each value
+            $clean_filter_values = array();
+            foreach ( $values as $value ) {
+                $clean_filter_values[] = sanitize_text_field( $value );
+            }
+            
+            $clean_values[$filter_id] = $clean_filter_values;
+        }
+        
+        return $clean_values;
+    }
+
+    /**
+     * Apply filters to a WP_Query object.
+     *
+     * @since    1.0.0
+     * @param    WP_Query    $query           The query to modify.
+     * @param    array       $filter_values   The selected filter values.
+     * @param    array       $query_args      Additional query args to set.
+     * @return   WP_Query    The modified query.
+     */
+    public function apply_filters_to_query( $query, $filter_values, $query_args = array() ) {
+        // Apply any additional query args first
+        foreach ( $query_args as $key => $value ) {
+            $query->set( $key, $value );
+        }
+        
+        // Apply each active filter to the query
+        foreach ( $filter_values as $filter_id => $values ) {
+            if ( isset( $this->filters[$filter_id] ) && ! empty( $values ) ) {
+                $query = $this->filters[$filter_id]->apply_to_query( $query, $values );
+            }
+        }
+        
+        return $query;
+    }
+
+    /**
+     * Render pagination for query results.
+     *
+     * @since    1.0.0
+     * @param    WP_Query    $query    The query object.
+     */
+    private function render_pagination( $query ) {
+        $big = 999999999; // need an unlikely integer
+        
+        echo '<nav class="filterly-pagination">';
+        echo paginate_links( array(
+            'base'      => str_replace( $big, '%#%', esc_url( get_pagenum_link( $big ) ) ),
+            'format'    => '?paged=%#%',
+            'current'   => max( 1, get_query_var( 'paged' ) ),
+            'total'     => $query->max_num_pages,
+            'prev_text' => '&laquo;',
+            'next_text' => '&raquo;',
+        ) );
+        echo '</nav>';
     }
 }

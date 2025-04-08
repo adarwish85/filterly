@@ -1,0 +1,528 @@
+/**
+ * Frontend styles for Filterly plugin.
+ *
+ * @since      1.0.0
+ * @package    Filterly
+ */
+
+/* Container and Layout */
+.filterly-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 30px;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+}
+
+.filterly-sidebar {
+    flex: 0 0 250px;
+}
+
+.filterly-results-container {
+    flex: 1 1 calc(100% - 280px);
+    min-width: 0; /* Fix for flex container with overflow */
+}
+
+@media (max-width: 768px) {
+    .filterly-container {
+        flex-direction: column;
+    }
+    
+    .filterly-sidebar {
+        flex: 0 0 100%;
+        order: 1;
+    }
+    
+    .filterly-results-container {
+        flex: 0 0 100%;
+        order: 2;
+    }
+}
+
+/* Filter Form */
+.filterly-form {
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.filterly-filter {
+    margin-bottom: 24px;
+}
+
+.filterly-filter-title {
+    margin: 0 0 12px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 8px;
+}
+
+/* Lists */
+.filterly-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.filterly-list li {
+    margin-bottom: 8px;
+    padding-left: 0;
+}
+
+.filterly-list label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.filterly-list input[type="checkbox"],
+.filterly-list input[type="radio"] {
+    margin-right: 8px;
+}
+
+/* Select Styles */
+.filterly-select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: #fff;
+    font-size: 14px;
+}
+
+/* Range Slider */
+.filterly-range-slider {
+    padding: 10px 0;
+}
+
+.filterly-range-inputs {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.filterly-range-inputs label {
+    font-size: 13px;
+}
+
+.filterly-range-inputs input {
+    width: 70px;
+    padding: 6px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.filterly-range-slider-container {
+    position: relative;
+    height: 30px;
+    padding: 0 10px;
+}
+
+.filterly-slider-min,
+.filterly-slider-max {
+    position: absolute;
+    width: 100%;
+    height: 5px;
+    background: none;
+    pointer-events: none;
+    outline: none;
+    -webkit-appearance: none;
+}
+
+.filterly-slider-min::-webkit-slider-thumb,
+.filterly-slider-max::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: #4a90e2;
+    cursor: pointer;
+    pointer-events: auto;
+    border: 1px solid #fff;
+}
+
+.filterly-slider-min::-moz-range-thumb,
+.filterly-slider-max::-moz-range-thumb {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: #4a90e2;
+    cursor: pointer;
+    pointer-events: auto;
+    border: 1px solid #fff;
+}
+
+/* Color Swatches */
+.filterly-color-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.filterly-color-item {
+    margin: 0;
+}
+
+.filterly-color-item label {
+    display: block;
+    position: relative;
+}
+
+.filterly-color-item input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.filterly-color-swatch {
+    display: block;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid #ddd;
+    transition: all 0.2s ease;
+}
+
+.filterly-color-item input:checked + .filterly-color-swatch {
+    box-shadow: 0 0 0 2px #4a90e2;
+    transform: scale(1.1);
+}
+
+/* Button Style */
+.filterly-button-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.filterly-button-item {
+    margin: 0;
+}
+
+.filterly-button-item label {
+    display: block;
+    position: relative;
+}
+
+.filterly-button-item input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.filterly-button {
+    display: block;
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    background: #f5f5f5;
+    font-size: 13px;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.filterly-button-item input:checked + .filterly-button {
+    background: #4a90e2;
+    color: #fff;
+    border-color: #4a90e2;
+}
+
+/* Image Style */
+.filterly-image-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.filterly-image-item {
+    margin: 0;
+}
+
+.filterly-image-item label {
+    display: block;
+    position: relative;
+}
+
+.filterly-image-item input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.filterly-image-item img {
+    display: block;
+    width: 40px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    transition: all 0.2s ease;
+}
+
+.filterly-image-item input:checked + img {
+    box-shadow: 0 0 0 2px #4a90e2;
+    transform: scale(1.05);
+}
+
+/* Action Buttons */
+.filterly-actions {
+    margin-top: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.filterly-apply-button {
+    padding: 10px 16px;
+    background: #4a90e2;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.filterly-apply-button:hover {
+    background: #3a80d2;
+}
+
+.filterly-reset-button {
+    padding: 10px 16px;
+    background: #f5f5f5;
+    color: #666;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.filterly-reset-button:hover {
+    background: #e5e5e5;
+}
+
+.filterly-count {
+    margin-left: auto;
+    font-size: 14px;
+    color: #666;
+}
+
+/* Results */
+.filterly-results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 30px;
+}
+
+.filterly-item {
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    background: #fff;
+}
+
+.filterly-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.filterly-item-thumbnail {
+    position: relative;
+    overflow: hidden;
+    padding-bottom: 60%;
+}
+
+.filterly-item-thumbnail img {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.filterly-item:hover .filterly-item-thumbnail img {
+    transform: scale(1.05);
+}
+
+.filterly-item-content {
+    padding: 20px;
+}
+
+.filterly-item-title {
+    margin: 0 0 10px;
+    font-size: 18px;
+    line-height: 1.3;
+}
+
+.filterly-item-title a {
+    color: #333;
+    text-decoration: none;
+}
+
+.filterly-item-title a:hover {
+    color: #4a90e2;
+}
+
+.filterly-item-meta {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 12px;
+}
+
+.filterly-item-excerpt {
+    font-size: 14px;
+    line-height: 1.5;
+    color: #666;
+    margin-bottom: 15px;
+}
+
+.filterly-item-more {
+    display: inline-block;
+    padding: 6px 12px;
+    background: #f5f5f5;
+    color: #666;
+    font-size: 13px;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.filterly-item-more:hover {
+    background: #4a90e2;
+    color: #fff;
+}
+
+/* No Results */
+.filterly-no-results {
+    padding: 40px 20px;
+    text-align: center;
+    background: #f9f9f9;
+    border-radius: 8px;
+}
+
+.filterly-no-results p {
+    font-size: 16px;
+    color: #666;
+    margin: 0;
+}
+
+/* Loading State */
+.filterly-loading {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.8);
+    z-index: 10;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.filterly-container.filterly-loading .filterly-loading {
+    display: flex;
+}
+
+.filterly-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #4a90e2;
+    border-radius: 50%;
+    animation: filterly-spin 1s linear infinite;
+}
+
+@keyframes filterly-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Pagination */
+.filterly-pagination, 
+.navigation.pagination,
+.woocommerce-pagination {
+    margin-top: 30px;
+    text-align: center;
+}
+
+.filterly-pagination .page-numbers,
+.pagination .page-numbers,
+.woocommerce-pagination .page-numbers {
+    display: inline-block;
+    padding: 8px 12px;
+    margin: 0 3px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    text-decoration: none;
+    color: #666;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.filterly-pagination .page-numbers.current,
+.pagination .page-numbers.current,
+.woocommerce-pagination .page-numbers.current {
+    background: #4a90e2;
+    color: #fff;
+    border-color: #4a90e2;
+}
+
+.filterly-pagination .page-numbers:hover,
+.pagination .page-numbers:hover,
+.woocommerce-pagination .page-numbers:hover {
+    background: #f5f5f5;
+}
+
+.filterly-pagination .page-numbers.current:hover,
+.pagination .page-numbers.current:hover,
+.woocommerce-pagination .page-numbers.current:hover {
+    background: #4a90e2;
+}
+
+/* Responsive Styles */
+@media (max-width: 992px) {
+    .filterly-results-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
+}
+
+@media (max-width: 576px) {
+    .filterly-results-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .filterly-item-title {
+        font-size: 16px;
+    }
+    
+    .filterly-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .filterly-count {
+        margin-left: 0;
+        text-align: center;
+        margin-top: 10px;
+    }
+}
